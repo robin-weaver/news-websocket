@@ -1,0 +1,2 @@
+discord.py @ git+https://github.com/Ozymandias1700/discord.py-for-selfbot
+websockets
