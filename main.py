@@ -41,6 +41,7 @@ class Server:
 
 @d_client.event
 async def on_message(message: Message):
+	# the following line has Walter Bloomberg's Discord ID and the #market-updates channel ID
 	if message.author.id == 708334730457645119 and message.channel.id == 708365137660215330:
 		async for m in message.channel.history(limit=1):  # this is how you can get message content when using a self bot
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:

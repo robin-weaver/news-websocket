@@ -1,2 +1,2 @@
-discord.py @ git+https://github.com/Ozymandias1700/discord.py-for-selfbot
+discord.py @ git+https://github.com/robin-weaver/discord.py-for-selfbot
 websockets
