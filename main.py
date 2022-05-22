@@ -44,7 +44,7 @@ class Server:
 
 	async def distribute(self, ws):
 		async for message in ws:
-			if token in message:
+			if token in message:  # hacky method of authentication
 				message = message.replace(token, '')
 				websockets.broadcast(self.clients, message)
 				print(message)
@@ -52,11 +52,11 @@ class Server:
 
 @d_client.event
 async def on_message(message: Message):
-	# the following line has Walter Bloomberg's Discord ID and the #market-updates channel ID
+	# the following line has Walter Bloomberg's Discord ID and the #market-updates channel ID he posts in
 	if message.author.id == 708334730457645119 and message.channel.id == 708365137660215330:
 		async for m in message.channel.history(limit=1):  # this is how you can get message content when using a self bot
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:
-				await ws.send(token + 'Walter Bloomberg' + m.content)  # a means of authenticating message source
+				await ws.send(token + 'Walter Bloomberg: ' + m.content)
 
 
 @d_client.event
@@ -68,13 +68,16 @@ async def on_connect():
 
 @tasks.loop(seconds=15)
 async def check_for_tweets():
+	tweet = None
 	for t_user in twitter_users:
 		for t in snt.TwitterSearchScraper(f'from:{t_user}').get_items():
 			tweet = t
-			break
+			break  # we only want the most recent tweet, which is the first yielded
+		if tweet is None:  # this won't happen unless the account has no tweets
+			return
 		if tweet.date > last_tweet[t_user]:
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:
-				await ws.send(token + f'@{t_user}' + tweet.content)
+				await ws.send(token + f'@{t_user}: ' + tweet.content)
 
 
 if __name__ == '__main__':
