@@ -7,13 +7,31 @@ import asyncio
 import snscrape.modules.twitter as snt
 from datetime import datetime
 import pytz
+import requests
+import xmltodict
+import ast
 
+headers = {'User-Agent': "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36 RuxitSynthetic/1.0 v3277245740052736821 t7774180644855091482 athe94ac249 altpriv cvcv=2 smf=0"}
 utc = pytz.UTC
 
-twitter_users = ['elonmusk']
+twitter_users = ['elonmusk', 'FirstSquawk', 'EPSGUID']
 last_tweet = {}
 for user in twitter_users:
 	last_tweet[user] = datetime.utcnow().replace(tzinfo=utc)
+
+filings_ids = []
+r = requests.get('https://www.sec.gov/Archives/edgar/xbrlrss.all.xml', headers=headers)
+d = xmltodict.parse(r.text)
+items = d['rss']['channel']['item']
+for filing in items:
+	filings_ids.append(filing['guid'])
+
+r1 = requests.get('https://www.sec.gov/files/company_tickers.json', headers=headers)
+data: dict = r1.json()
+ticker_cik = {}
+for d in data.values():
+	ticker_cik[str(d['cik_str'])] = d['ticker']
+
 
 d_client = discord.Client()
 
@@ -44,24 +62,39 @@ class Server:
 
 	async def distribute(self, ws):
 		async for message in ws:
-			if token in message:  # hacky method of authentication
-				message = message.replace(token, '')
-				websockets.broadcast(self.clients, message)
-				print(message)
+			if not message.startswith("{'token': " + f"'{token}'"):  # means of authentication - bit hacky, but works
+				return
+			try:
+				message = ast.literal_eval(message)
+			except Exception as e:
+				print('error: ' + str(e))
+				return
+			message.pop('token')
+			message = str(message)
+			websockets.broadcast(self.clients, message)
+			print(message)
 
 
 @d_client.event
 async def on_message(message: Message):
 	# the following line has Walter Bloomberg's Discord ID and the #market-updates channel ID he posts in
+	# could be done via twitter scraping also
 	if message.author.id == 708334730457645119 and message.channel.id == 708365137660215330:
 		async for m in message.channel.history(limit=1):  # this is how you can get message content when using a self bot
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:
-				await ws.send(token + 'Walter Bloomberg: ' + m.content)
+				broadcast = {
+					"token": token,
+					"message_type": 'news',
+					"source": 'Walter Bloomberg',
+					"content": m.content
+				}
+				await ws.send(str(broadcast))
 
 
 @d_client.event
 async def on_connect():
 	check_for_tweets.start()
+	check_for_filings.start()
 	server = Server()
 	await websockets.serve(server.ws_handler, 'localhost', 4000)
 
@@ -75,9 +108,42 @@ async def check_for_tweets():
 			break  # we only want the most recent tweet, which is the first yielded
 		if tweet is None:  # this won't happen unless the account has no tweets
 			return
+		message_type = 'earnings' if t_user == 'EPSGUID' else 'news'
 		if tweet.date > last_tweet[t_user]:
+			last_tweet[t_user] = tweet.date
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:
-				await ws.send(token + f'@{t_user}: ' + tweet.content)
+				broadcast = {
+					'token': token,
+					'message_type': message_type,
+					'source': f'@{t_user}',
+					'content': tweet.content
+				}
+				await ws.send(str(broadcast))
+
+
+@tasks.loop(seconds=15)
+async def check_for_filings():
+	req = requests.get('https://www.sec.gov/Archives/edgar/xbrlrss.all.xml', headers={'User-Agent': "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36 RuxitSynthetic/1.0 v3277245740052736821 t7774180644855091482 athe94ac249 altpriv cvcv=2 smf=0"})
+	data = xmltodict.parse(req.text)
+	current_filings = data['rss']['channel']['item']
+	for f in current_filings:
+		if f['guid'] not in filings_ids:
+			try:
+				ticker = ticker_cik[f['edgar:xbrlFiling']['edgar:cikNumber']]
+			except KeyError:
+				ticker = 'None'
+			broadcast = {
+				'token': token,
+				'message_type': 'filing',
+				'type': f['description'],
+				'ticker': ticker_cik[f['edgar:xbrlFiling']['edgar:cikNumber']],
+				'company': f['edgar:xbrlFiling']['edgar:companyName'],
+				'link': f['edgar:xbrlFiling']['edgar:xbrlFiles']['edgar:xbrlFile'][0]['@edgar:url']
+			}
+			filings_ids.append(f['guid'])
+			async with websockets.connect('ws://127.0.0.1:4000') as ws:
+				await ws.send(str(broadcast))
+	pass
 
 
 if __name__ == '__main__':

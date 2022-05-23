@@ -1,3 +1,7 @@
 discord.py @ git+https://github.com/robin-weaver/discord.py-for-selfbot
 websockets
 snscrape
+pytz
+requests
+xmltodict
+feedparser
