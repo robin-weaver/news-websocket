@@ -4,4 +4,3 @@ snscrape
 pytz
 requests
 xmltodict
-feedparser

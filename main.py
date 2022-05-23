@@ -9,7 +9,7 @@ from datetime import datetime
 import pytz
 import requests
 import xmltodict
-import ast
+import json
 
 headers = {'User-Agent': "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36 RuxitSynthetic/1.0 v3277245740052736821 t7774180644855091482 athe94ac249 altpriv cvcv=2 smf=0"}
 utc = pytz.UTC
@@ -56,21 +56,23 @@ class Server:
 		await self.register(ws)
 		try:
 			await self.distribute(ws)
+		except Exception as e:
+			print('distribution error: ' + str(e))
 		finally:
 			await self.unregister(ws)
 		await asyncio.sleep(0.01)
 
 	async def distribute(self, ws):
 		async for message in ws:
-			if not message.startswith("{'token': " + f"'{token}'"):  # means of authentication - bit hacky, but works
+			if not message.startswith('{"token": ' + f'"{token}"'):  # means of authentication - bit hacky, but works
 				return
 			try:
-				message = ast.literal_eval(message)
+				message = json.loads(message)
 			except Exception as e:
 				print('error: ' + str(e))
 				return
 			message.pop('token')
-			message = str(message)
+			message = json.dumps(message)
 			websockets.broadcast(self.clients, message)
 			print(message)
 
@@ -113,37 +115,37 @@ async def check_for_tweets():
 			last_tweet[t_user] = tweet.date
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:
 				broadcast = {
-					'token': token,
-					'message_type': message_type,
-					'source': f'@{t_user}',
-					'content': tweet.content
+					"token": token,
+					"message_type": message_type,
+					"source": f'@{t_user}',
+					"content": tweet.content
 				}
-				await ws.send(str(broadcast))
+				await ws.send(json.dumps(broadcast))
 
 
 @tasks.loop(seconds=15)
 async def check_for_filings():
 	req = requests.get('https://www.sec.gov/Archives/edgar/xbrlrss.all.xml', headers={'User-Agent': "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36 RuxitSynthetic/1.0 v3277245740052736821 t7774180644855091482 athe94ac249 altpriv cvcv=2 smf=0"})
-	data = xmltodict.parse(req.text)
-	current_filings = data['rss']['channel']['item']
+	current_data = xmltodict.parse(req.text)
+	current_filings = current_data['rss']['channel']['item']
 	for f in current_filings:
-		if f['guid'] not in filings_ids:
-			try:
-				ticker = ticker_cik[f['edgar:xbrlFiling']['edgar:cikNumber']]
-			except KeyError:
-				ticker = 'None'
-			broadcast = {
-				'token': token,
-				'message_type': 'filing',
-				'type': f['description'],
-				'ticker': ticker_cik[f['edgar:xbrlFiling']['edgar:cikNumber']],
-				'company': f['edgar:xbrlFiling']['edgar:companyName'],
-				'link': f['edgar:xbrlFiling']['edgar:xbrlFiles']['edgar:xbrlFile'][0]['@edgar:url']
-			}
-			filings_ids.append(f['guid'])
-			async with websockets.connect('ws://127.0.0.1:4000') as ws:
-				await ws.send(str(broadcast))
-	pass
+		if f['guid'] in filings_ids:
+			continue
+		try:
+			ticker = ticker_cik[f['edgar:xbrlFiling']['edgar:cikNumber']]
+		except KeyError:
+			ticker = 'None'
+		broadcast = {
+			"token": token,
+			"message_type": "filing",
+			"type": f['description'],
+			"ticker": ticker,
+			"company": f['edgar:xbrlFiling']['edgar:companyName'],
+			"link": f['edgar:xbrlFiling']['edgar:xbrlFiles']['edgar:xbrlFile'][0]['@edgar:url']
+		}
+		filings_ids.append(f['guid'])
+		async with websockets.connect('ws://127.0.0.1:4000') as ws:
+			await ws.send(json.dumps(broadcast))
 
 
 if __name__ == '__main__':
