@@ -22,15 +22,14 @@ d = xmltodict.parse(r.text)
 items = d['rss']['channel']['item']
 for filing in items:
 	filings_ids.append(filing['guid'])
-print(f'{len(filings_ids)} filings found.')
+print('Current filings retrieved.')
 
 r1 = requests.get('https://www.sec.gov/files/company_tickers.json', headers=headers)
 data: dict = r1.json()
 ticker_cik = {}
 for d in data.values():
 	ticker_cik[str(d['cik_str'])] = d['ticker']
-print(f'{len(ticker_cik)} ticker:CIK pairs found.')
-
+print('Ticker:CIK mappings retrieved.')
 
 
 class Server:
@@ -118,7 +117,7 @@ async def check_for_filings():
 				"type": f['description'],
 				"ticker": ticker,
 				"company": f['edgar:xbrlFiling']['edgar:companyName'],
-				"link": f['edgar:xbrlFiling']['edgar:xbrlFiles']['edgar:xbrlFile'][0]['@edgar:url']
+				"url": f['edgar:xbrlFiling']['edgar:xbrlFiles']['edgar:xbrlFile'][0]['@edgar:url']
 			}
 			filings_ids.append(f['guid'])
 			async with websockets.connect('ws://127.0.0.1:4000') as ws:
