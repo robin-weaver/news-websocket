@@ -8,6 +8,10 @@ import requests
 import xmltodict
 import json
 
+token = os.environ.get('TOKEN')
+port = int(os.environ.get('PORT'))
+host_ip = 'ws://news-websocket.herokuapp.com/'
+
 headers = {'User-Agent': "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36 RuxitSynthetic/1.0 v3277245740052736821 t7774180644855091482 athe94ac249 altpriv cvcv=2 smf=0"}
 utc = pytz.UTC
 
@@ -22,14 +26,15 @@ d = xmltodict.parse(r.text)
 items = d['rss']['channel']['item']
 for filing in items:
 	filings_ids.append(filing['guid'])
-print('Current filings retrieved.')
+print(f'{len(filings_ids)} filings found.')
 
 r1 = requests.get('https://www.sec.gov/files/company_tickers.json', headers=headers)
 data: dict = r1.json()
 ticker_cik = {}
 for d in data.values():
-	ticker_cik[str(d['cik_str'])] = d['ticker']
-print('Ticker:CIK mappings retrieved.')
+	if str(d['cik_str']) not in ticker_cik.keys():
+		ticker_cik[str(d['cik_str'])] = d['ticker']
+print(f'{len(ticker_cik)} ticker:CIK pairs found.')
 
 
 class Server:
@@ -37,16 +42,9 @@ class Server:
 
 	async def register(self, ws):
 		self.clients.add(ws)
-		# print(f'{ws.remote_address} has connected.')
 
 	async def unregister(self, ws):
 		self.clients.remove(ws)
-		# print(f'{ws.remote_address} has disconnected.')
-
-	async def client_gen(self):
-		for client in self.clients:
-			await asyncio.sleep(0.01)
-			yield client
 
 	async def ws_handler(self, ws, uri):
 		await self.register(ws)
@@ -61,6 +59,7 @@ class Server:
 	async def distribute(self, ws):
 		async for message in ws:
 			if not message.startswith('{"token": ' + f'"{token}"'):  # means of authentication - bit hacky, but works
+				print(message)
 				return
 			try:
 				message = json.loads(message)
@@ -85,7 +84,7 @@ async def check_for_tweets():
 			message_type = 'earnings' if t_user == 'EPSGUID' else 'news'
 			if tweet.date > last_tweet[t_user]:
 				last_tweet[t_user] = tweet.date
-				async with websockets.connect('ws://127.0.0.1:4000') as ws:
+				async with websockets.connect(host_ip + str(port)) as ws:
 					broadcast = {
 						"token": token,
 						"message_type": message_type,
@@ -120,7 +119,7 @@ async def check_for_filings():
 				"url": f['edgar:xbrlFiling']['edgar:xbrlFiles']['edgar:xbrlFile'][0]['@edgar:url']
 			}
 			filings_ids.append(f['guid'])
-			async with websockets.connect('ws://127.0.0.1:4000') as ws:
+			async with websockets.connect(host_ip + str(port)) as ws:
 				await ws.send(json.dumps(broadcast))
 		await asyncio.sleep(1)
 
@@ -128,7 +127,7 @@ async def check_for_filings():
 async def main():
 	server = Server()
 	print('Starting websocket server...')
-	async with websockets.serve(server.ws_handler, 'localhost', 4000):
+	async with websockets.serve(server.ws_handler, host="", port=port):
 		print('Server started.')
 		asyncio.create_task(check_for_tweets())
 		asyncio.create_task(check_for_filings())
@@ -136,5 +135,4 @@ async def main():
 		await asyncio.Future()
 
 if __name__ == '__main__':
-	token = os.environ.get('TOKEN')
 	asyncio.run(main())
