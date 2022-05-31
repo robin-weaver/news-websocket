@@ -35,5 +35,6 @@ News headline:
     "content": "CBOE VOLATILITY INDEX UP 2.23 POINTS AT 27.95"
 }
 ```
-There is a version of this project being hosted at `ws://news-websocket.herokuapp.com/` that you can connect to and use freely.
+
+There is a version of this project being hosted at `ws://news-websocket.herokuapp.com/` that you can connect to if you wish to integrate this news feed into an app, bot or similar.
 
