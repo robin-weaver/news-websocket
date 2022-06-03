@@ -54,7 +54,7 @@ class Server:
 			print('distribution error: ' + str(e))
 		finally:
 			await self.unregister(ws)
-		await asyncio.sleep(0.01)
+		await asyncio.sleep(0)
 
 	async def distribute(self, ws):
 		async for message in ws:
@@ -92,7 +92,7 @@ async def check_for_tweets():
 						"content": tweet.content
 					}
 					await ws.send(json.dumps(broadcast))
-		await asyncio.sleep(1)
+		await asyncio.sleep(0.2)
 
 
 async def check_for_filings():
@@ -121,7 +121,7 @@ async def check_for_filings():
 			filings_ids.append(f['guid'])
 			async with websockets.connect(host_ip + str(port)) as ws:
 				await ws.send(json.dumps(broadcast))
-		await asyncio.sleep(1)
+		await asyncio.sleep(0.2)
 
 
 async def main():
